@@ -1,0 +1,244 @@
+reference:
+https://community.dynamics.com/ax/b/axinthefield/posts/dynamicsperf-2-10-deployment-guide
+https://blogs.msdn.microsoft.com/axinthefield
+
+
+INTRODUCTION
+
+The tool DynamicsPerf (Performance Analyzer for Dynamics) is used by Microsoft Dynamics Support team, Premier Field Engineers and Product Group team members to diagnose performance issues with Dynamics products such as Dynamics 365 Local Business Data (On Prem), Dynamics AX and Dynamics CRM.
+
+IMPORTANT: The purpose of the Performance Analyzer is to be used on a continual basis so it is important for administrators to understand the components that make up the tool to ensure all jobs and collectors are running.
+
+DynamicsPerf collects a variety of pertinent information from the database server, Application Object Server (AOS), and application server. This information is captured from a number of collectors provided by DynamicsPerf that includes query statistics, query plans, index statistics, database and AOS server configurations, AOS event logs and Application Object Tree (AOT) metadata. In addition, blocking and deadlocking events are collected through SQL Exenteded Events while performance counter data is collected from the database and AOS servers.
+
+Deployment Models
+
+As you can see from the illustration above, the DynamicsPerf database is the central repository for most of the data collected by the Performance Analyzer tool.
+
+Performance Analyzer is delivered as two SQL Server solution files:
+
+[Performance Analyzer 2.10 Installation.ssmssln]; the first includes a set of SQL jobs, X++ classes, Visual Basic scripts and performance counters to initiate the collection process.
+[Performance Analyzer 2.10 Analyze Data.ssmssln]: the second includes a set of sample SQL scripts that can be used to query and analyze the populated tables and views in the DynamicsPerf database.
+Before we begin, you can read about DynamicsPerf at:
+
+Deploying DynamicsPerf
+
+There are several steps that need to be completed in order to successfully deploy DynamicsPerf. The toolset is meant to be deployed and set up for data collection on a continual basis throughout the life of your Microsoft Dynamics produts. This ensures that if performance issues arise, you are able to quickly identify the bottleneck as well as use for comparison purposes. We currently have scripts for Dynamics AX and Dynamics CRM in version 2.10.
+
+Deployment Setup Checklist
+
+The following is a summarized checklist of the steps to deploy Performance Analyzer. See the steps below for detailed information.
+
+Step 1
+
+Run Script 1 Create Core Objects, this creates the DynamicsPerf database and all objects
+
+Step 2
+
+Run script 2 Deploy DynamicsPerf Schedules (pick your desired collection timeframe)
+
+Step 3
+
+If DynamicsPerf is being installed remotely run script 3 Setup Linked Servers, otherwise skip this step
+
+Step 4
+
+Run Script 4 Configure DBs to Collect, specify your Dynamics Databases that you want to collect data for
+
+Step 5
+
+Run Script 5 Setup SSRS Data Collection, this will allow collection of SSRS Report performance data
+
+Step 6
+
+Run Script 6 Install Fulltext Indexes in DynamicsPerf database, must have FULLTEXT Index Service Installed
+
+Step 7
+
+Run Script 7 Deploy Extended Events, MUST BE RUN on SQL instance hosting your Dynamics application database, SQL 2012 and above only
+
+Step 8
+
+Setup Security using this blog
+
+Step 9
+
+Deploy the Windows Perfmon counters
+
+Step 10 (Dynamics components)
+
+For the Dynamics AX/365 components use the following link: http://blogs.msdn.com/b/axinthefield/archive/2015/12/30/dynamicsperf-2-0-installation-for-dynamics-ax.aspx
+Before you begin
+Before you deploy Performance Analyzer, you must complete the following:
+
+Extract the DynamicsPerfxxx.zip file to a location to where you can browse from the database
+Make sure you have rights to create new databases on the database server
+Verify you have read access to the Dynamics Application database
+Verify also you have write access to the DynamicsPerf database (this database gets created as part of Performance Analyzer)
+Ensure you have created a local folder on the database server called \SQLTRACE to store the extended event files that get generated
+
+STEP 1 - Create Database Objects, and Jobs
+In order to use Performance Analyzer, you must first create the DynamicsPerf database, its objects, and jobs. In the following steps you will create the DynamicsPerf database, its objects, and jobs.
+
+On the database server, open SQL Server Management Studio (SSMS)
+Click File>Open, Project/Solution
+Browse to the location for where you extracted the DynamicsPerf2.0.zip
+Select the Performance Analyzer 2.10 Installation.ssmssln file
+In Solution Explorer, open the 1-Create_Core_Objects.sql script
+Execute the script. [This will create the DynamicsPerf database and SQL jobs.]
+image
+
+NOTE: Ensure that you read the notes in the script if you wish to path the DynamicsPerf files to a location other than the C drive
+
+NOTE:  If installed on SQL 2008R2, you WILL get errors.  Not all of the new views are compatible with SQL Server 2008R2.  Highly recommended to do a remote installation of DynamicsPerf 2.10 on SQL 2012 collecting data from your older SQL 2008R2 server.
+
+99% of DynamicsPerf 2.10 works on SQL Server 2008R2.  It's just a couple new views and extended events that don't work on SQL 2008R2.
+STEP 2 - Deploy DynamicsPerf Schedules
+DynamicsPerf 2.10 has its own internal scheduling engine separate from SQL Server Agent. This makes it possible to have 50 different collectors without having to schedule 50 different tasks in SQL Server Agent. This also makes it much simpler to control via tables in the DynamicsPerf database.
+
+The three main scheduling tables are:
+
+DATABASES_2_COLLECT
+DYNPERF_TASK_SCHEDULER
+DYNPERF_TASK_HISTORY
+In Solution Explorer, open the 2-Deploy DynamicsPerf Schedules.sql script
+Execute the script. [This will deploy the tasks and schedules for the DynamicsPerf database.]
+NOTE: Use script 2.0 for normal collection hourly.  Use script 2.1 to collect every 5 minutes when doing more active troubleshooting.
+
+image
+
+STEP 3 – Setup Linked Servers
+In order to collect data from a Microsoft Dynamics product database or SSRS database that are on a different SQL Servers than the DynamicsPerf database you must setup Linked Servers for them. Otherwise, this step is optional.
+
+NOTE: You will need to setup a Linked Server for EACH remote database server.
+
+NOTE: MUST ENABLE Distributed Transaction Coordinator in Windows Services on the server you are setting the Linked server up on.
+
+clip_image008
+
+There are two ways that you could setup the Linked Server: one is using the provided script in the solution, and the other is directly in SQL Server Management Studio (SSMS).  We’ll provide steps for both.
+
+The following is a diagram that represents the Linked Servers that would need setup for two configurations:
+
+clip_image010
+Configure Linked Server via TSQL scripts
+In Solution Explorer, open the 3-Setup Linked Servers(optional).sql script
+Edit the script.
+Step 1 Create the Linked Server
+clip_image012
+Configure the @server= with your remote SQL Server that you want to collect data
+Configure @datasrc = with the DNS name of your SQL Server. (The example is Azure SQL Database which is supported
+Configure @catalog with the database name of your Dynamics product database or if setting up for SSRS it should be ‘ReportServer’.
+Execute this script to create the Linked Server
+Step 2 Add credentials and options to this linked server
+
+clip_image014
+
+Configure the @server= with your remote SQL Server that you want to collect data.
+
+If you will be using Windows Authentication, leave the script as is. If you will be setting up SQL Authentication, change @useself = ‘FALSE’, and uncomment the last 2 lines and fill in as appropriate.
+
+NOTE: If using Windows Authentication, the SQL Server Agent MUST BE started with a DOMAIN account that has rights to the remote server.
+
+NOTE: This account must have administrative rights to query SQL DMVs on the remote server.
+Execute this script to create the Login for the Linked Server
+Step 3 Enable the correct options for the Linked Server
+
+clip_image016
+
+Replace ‘SQL_NAME_HERE’ with the name of the Linked server setup in the previous steps
+Execute this script to set the correct options for the Linked Server
+Additional information about setting up linked servers can be found at: https://msdn.microsoft.com/en-us/library/ff772782.aspx
+Configure Linked Server via SQL Server Management Studio (SSMS):
+In SSMS, navigate to Server Objects: Linked Servers and right click and select NEW Linked Server
+
+clip_image018
+
+Next Click the SQL Server selection box and put in the name of your remote SQL Server:
+
+clip_image020
+
+Next Click the Security options and fill out as necessary:
+
+clip_image022
+
+Next select the Server Options Tab and set the following options:
+
+clip_image024
+
+click OK to setup the Linked Server
+Step 4 – Configure Dynamics databases to be collected
+This step populates the DATABASES_2_COLLECT table in the DynamicsPerf database.  This will start data collection immediately for the database.
+
+NOTE: Complete this step for EACH database you would like to gather performance data on.
+
+In Solution Explorer, open the 4-ConfigureDBs to Collect.sql script
+Edit the script, replace the ‘SQL_NAME_HERE' with the SQL Server that hosts the database.  Replace 'DB_NAME_HERE' with the database to be collected
+Execute the script
+clip_image026
+STEP 5 – Setup SQL Server Reporting Server (SSRS) data collection
+This step populates the SSRS_CONFIG table in the DynamicsPerf database.  This will start data collection immediately for the SSRS database.
+
+In Solution Explorer, open the 5-Setup SSRS Data Collection.sql script
+Edit the script, replace the ‘SSRS_SERVER_NAME_HERE’ with the SQL Server that hosts the ReportServer database.
+Execute the script
+clip_image028
+NOTE: If the SSRS is remote from the SQL Server hosting the DynamicsPerf toolset, you will need to setup a Linked Server per the steps in that section.
+STEP 6 – Install the FULLTEXT indexes into DynamicsPerf
+This step puts FULLTEXT indexes into the DynamicsPerf database.  This allows for more dynamic investigation of the data collected.
+
+In Solution Explorer, open the 6-Install Fulltext Indexes for DynamicsPerf.sql script
+Execute the script
+clip_image030
+STEP 7 – Deploy Extended Events to SQL Server
+This step deploys Extended Events to the SQL Server hosting your Dynamics application database.  This collects blocking and other performance related event data.  This is the replacement for SQL Trace
+
+PREREQUISITE:  You must create a folder on C:\SQLTRACE of the SQL Server where you are deploying this script. If you change that folder location then you will have to edit the scripts to the new location.
+
+In Solution Explorer, open the 7-Deploy Extended Events.sql script (SQL2008R2 installations use script 7a-SQL2008R2 Blocking Jobs.sql instead of the extended events)
+Connect to the appropriate SQL Server instance (not the DynamicsPerf SQL Server unless this is a local install see instructions below)
+Execute the script
+clip_image032
+clip_image034
+For SQL2008R2 installations, do the following:
+
+In Solution Explorer, open the 7a-Blocking Jobs.sql script
+Connect to the appropriate SQL Server instance (not the DynamicsPerf SQL Server unless this is a local install see instructions below)
+Execute the script
+Open SQL Server Agent on the instance to which you deployed the blocking job.
+Open the Dynperf_Default_trace_start job and enable the job. 
+Edit the script to change the path location if you created a director other then C:\SQLTRACE on the server.
+
+Step 8 – Setup Security
+Please follow this link for setting up the necessary security for the DynamicsPerf toolset.
+
+https://blogs.msdn.microsoft.com/axinthefield/dynamicsperf-2-0-setting-up-security-for-remote-collection/
+
+
+
+STEP 9 - Configure and Schedule Performance Counter Logging on Database Server
+Please follow this link for information on setting up Windows Performance Monitor: http://blogs.msdn.com/b/axinthefield/archive/2016/01/05/setting-up-windows-performance-monitor-templates.aspx
+
+Step 10 – Install Dynamics components
+Please follow this link for setting up the Dynamics specific components:
+
+https://blogs.msdn.microsoft.com/axinthefield/dynamicsperf-2-10-installation-for-dynamics-365-local-business-data-on-prem-dynamics-ax/
+
+
+Deployment Verification Checklist
+The following is a list of items that should be checked periodically to ensure Performance Analyzer is running and collecting the data.
+
+Step 1 – Open the Monitor DynamicsPerf Health.sql script
+
+We have provided a script to monitor the data collection process.  The script is called Monitor DynamicsPerf Health.sql in the installation solution.  This script will show the CAPTURE_LOG for all events.  It also displays the databases that have been setup to collect.  The 3rd dataset is the Task History table which has a column LAST_RUN which displays the last time the task was run.  You can review this data to verify data collection is setup and running without issues.
+
+image
+
+Step 2 – Review the CAPTURE_LOG TABLE
+Check the CAPTURE_LOG in the DynamicsPerf database script
+
+image
+
+Step 3 - Review collected data
+
+Open the Analyzer Performance solution and review collected data
